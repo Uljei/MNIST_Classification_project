@@ -1,7 +1,9 @@
-import numpy as np
 import gzip
 import pickle
+
 import matplotlib.pyplot as plt
+import numpy as np
+
 
 # Activation Func
 def sigmoid(x):
@@ -31,13 +33,23 @@ def mse(y, y_hat):
     return 0.5 * np.mean(np.sum((y - y_hat) ** 2, axis=1))
 
 def mse_derivative(y, y_hat):
-    return (y_hat - y)
+    return y_hat - y
 
 def cross_entropy(y, y_hat):
     return -np.mean(np.sum(y * np.log(y_hat + 1e-9), axis=1))
 
 def cross_entropy_derivative(y, y_hat):
     return (y_hat - y) / y.shape[0]
+
+# 4输出用了二元交叉熵
+def bce_logits(y, logits):
+    z = logits
+    # numerically stable BCE with logits
+    return np.mean(np.maximum(z, 0) - z * y + np.log1p(np.exp(-np.abs(z))))
+
+def bce_logits_derivative(y, logits):
+    # dL/dz = sigmoid(z) - y
+    return sigmoid(logits) - y
 
 # Network Layer
 class layer():
@@ -87,7 +99,7 @@ class MLPModel():
         self.train_losses = []  # training loss
         self.val_losses = []    # validation loss
         self.init_weights()
-        
+
     def init_weights(self):
         self.layers.append(layer(self.input_size, self.hidden_sizes[0], self.activations[0]))
         for i in range(1, self.num_layers):
@@ -105,6 +117,8 @@ class MLPModel():
             grad = mse_derivative(y, y_hat)
         elif self.loss == "cross_entropy":
             grad = cross_entropy_derivative(y, y_hat)
+        elif self.loss == "bce_logits":
+            grad = bce_logits_derivative(y, y_hat)
         else:
             raise ValueError("Unsupported loss function")
         for l in reversed(self.layers):
@@ -115,7 +129,7 @@ class MLPModel():
             l.W -= lr * l.W_grad
             l.b -= lr * l.b_grad
 
-    def fit(self, X, y, X_val, y_val, epochs, lr, batch_size):
+    def fit(self, X, y, X_val, y_val, epochs, lr, batch_size, verbose=1):
         for epoch in range(epochs):
             idx = np.random.permutation(X.shape[0]) # stochastic gradient decent
             X, y = X[idx], y[idx]
@@ -133,15 +147,21 @@ class MLPModel():
             if self.loss == "mse":
                 train_loss = mse(y, y_hat_train)
                 val_loss = mse(y_val, y_hat_val)
-            else:
-                train_loss = cross_entropy(y, y_hat_train)
+            elif self.loss == "cross_entropy":
+                train_loss = cross_entropy(y, y_hat_train)  # y_hat_train is probs (softmax)
                 val_loss = cross_entropy(y_val, y_hat_val)
+            elif self.loss == "bce_logits":
+                train_loss = bce_logits(y, y_hat_train)  # y_hat_train are logits
+                val_loss = bce_logits(y_val, y_hat_val)
+            else:
+                raise ValueError("Unsupported loss")
             self.train_losses.append(train_loss)
             self.val_losses.append(val_loss)
 
             train_acc = self.evaluate(X, y)
             val_acc = self.evaluate(X_val, y_val)
-            print(f"Epoch {epoch+1}: Train Acc={train_acc:.4f}, Val Acc={val_acc:.4f}, Train Loss={train_loss:.4f}, Val Loss={val_loss:.4f}")
+            if verbose:
+                print(f"Epoch {epoch+1}: Train Acc={train_acc:.4f}, Val Acc={val_acc:.4f}, Train Loss={train_loss:.4f}, Val Loss={val_loss:.4f}")
 
     def predict(self, X):
         y_hat = self.forward(X)
@@ -153,26 +173,41 @@ class MLPModel():
             y_pred = np.argmax(y_hat, axis=1)
             y_true = np.argmax(y, axis=1)
         elif y.shape[1] == 4:
-            y_pred = from_bit4(y_hat)
-            y_true = from_bit4(y)
+            y_pred = bit4_logits_to_int(y_hat)
+            y_true = bit4_bits_to_int(y)
         else:
             raise ValueError("y must be one-hot (10) or 4-bit encoded (4)")
         return np.mean(y_pred == y_true)
 
-# ---- 4-bit output support ----
+# ---- 4输出支持 ----
 def to_bit4(y_digits):
     y_digits = np.asarray(y_digits).astype(int)
     bits = ((y_digits[:, None] >> np.arange(4)) & 1)
     return bits.astype(float)
 
-def from_bit4(logits_or_probs):
-    arr = np.asarray(logits_or_probs)
+def bit4_logits_to_int(logits):
+    """Decode 4-bit *logits* to digit int in [0,9]."""
+    arr = np.asarray(logits)
     if arr.ndim == 1:
         arr = arr[None, :]
     probs = 1 / (1 + np.exp(-arr))
     bits = (probs >= 0.5).astype(int)
     vals = (bits * (2 ** np.arange(4))).sum(axis=1)
     return np.clip(vals, 0, 9)
+
+def bit4_bits_to_int(bits):
+    """Decode 4-bit *binary bits/probabilities* (targets) to digit int in [0,9].
+    Accepts 0/1 or probabilities in [0,1]. Threshold at 0.5; **no sigmoid applied**.
+    """
+    arr = np.asarray(bits)
+    if arr.ndim == 1:
+        arr = arr[None, :]
+    b = (arr >= 0.5).astype(int)
+    vals = (b * (2 ** np.arange(4))).sum(axis=1)
+    return np.clip(vals, 0, 9)
+
+# Backward-compat alias
+from_bit4 = bit4_logits_to_int
 
 # Loading Data
 def load_mnist(path='mnist.pkl.gz', label_mode='onehot'):
@@ -196,31 +231,42 @@ def load_mnist(path='mnist.pkl.gz', label_mode='onehot'):
 # functions for attack
 def grad_input(model, X, y):
     """
-    Given model, input X and output y (one-hot encoded).，
     returns dLoss/dX (same shape as X).
+    For one-hot: y is one-hot; for 4-bit: y is 4-bit bits (0/1).
     """
     # forward
     y_hat = model.forward(X)
 
-    # derivative of the loss with respect to the output
+    # choose dL/d(output of last layer)
     if model.loss == "mse":
-        grad = mse_derivative(y, y_hat)
+        grad = mse_derivative(y, y_hat)                # dL/dA_L  (A_L is activation output)
+        last_is_logits = False
     elif model.loss == "cross_entropy":
-        grad = cross_entropy_derivative(y, y_hat)
+        grad = cross_entropy_derivative(y, y_hat)      # dL/dA_L  (softmax+CE约化梯度)
+        last_is_logits = False
+    elif model.loss == "bce_logits":
+        # y_hat are logits when activation=None on last layer
+        grad = bce_logits_derivative(y, y_hat)         # dL/dZ_L  (Z_L is logits)
+        last_is_logits = True
     else:
         raise ValueError("Unsupported loss")
 
-    # Propagate the gradient from the last layer back to the input
+    # backprop to input
+    # 遍历各层（从后往前），最后一层若是logits，就不再乘激活导数
+    first = True
     for l in reversed(model.layers):
-        # First multiply by the derivative of the activation
-        if l.activation == 'sigmoid':
-            grad = grad * sigmoid_derivative(l.output)
-        elif l.activation == 'ReLU':
-            grad = grad * ReLU_derivative(l.output)
-        elif l.activation == 'tanh':
-            grad = grad * tanh_derivative(l.output)
-        # For softmax we skip extra handling here
+        if first and last_is_logits:
+            # do NOT multiply by activation' because output is logits already
+            pass
+        else:
+            if l.activation == 'sigmoid':
+                grad = grad * sigmoid_derivative(l.output)
+            elif l.activation == 'ReLU':
+                grad = grad * ReLU_derivative(l.output)
+            elif l.activation == 'tanh':
+                grad = grad * tanh_derivative(l.output)
         grad = np.dot(grad, l.W.T)
+        first = False
 
     return grad
 
@@ -234,7 +280,10 @@ def fgsm_attack(model, X, y, epsilon=0.1):
     x_adv = np.clip(x_adv, 0.0, 1.0)
     return x_adv
 
-def run_experiment(label_mode='onehot', epochs=15, lr=0.3, batch_size=32):
+# 加了个一键跑（感觉有点乱所以这么写），不过感觉4输出也不需要这么多的样子
+def run_experiment(label_mode='onehot', epochs=15, lr=0.3, batch_size=32, seed=42, verbose=1):
+    # Ensure reproducibility
+    np.random.seed(seed)
     X_train, y_train, X_val, y_val, X_test, y_test = load_mnist('mnist.pkl.gz', label_mode=label_mode)
     if label_mode == 'onehot':
         layers = [784, 30, 10]
@@ -242,10 +291,11 @@ def run_experiment(label_mode='onehot', epochs=15, lr=0.3, batch_size=32):
         loss = 'cross_entropy'
     else:
         layers = [784, 32, 4]
-        activations = ['sigmoid', 'sigmoid']
-        loss = 'mse'
+        # hidden uses sigmoid, output is linear (logits) for BCE-with-logits
+        activations = ['sigmoid', None]
+        loss = 'bce_logits'
     model = MLPModel(layers[0], layers[-1], layers[1:-1], len(layers)-2, activations, loss=loss)
-    model.fit(X_train, y_train, X_val, y_val, epochs=epochs, lr=lr, batch_size=batch_size)
+    model.fit(X_train, y_train, X_val, y_val, epochs=epochs, lr=lr, batch_size=batch_size, verbose=verbose)
     test_acc = model.evaluate(X_test, y_test)
     return {
         'label_mode': label_mode,
@@ -257,6 +307,7 @@ def run_experiment(label_mode='onehot', epochs=15, lr=0.3, batch_size=32):
         'y_test': y_test,
     }
 
+# 还没写完，放了个思路周五写
 def hyperparam_study(label_mode, configs):
     results = []
     for cfg in configs:
@@ -271,8 +322,8 @@ def hyperparam_study(label_mode, configs):
             loss = 'cross_entropy'
         else:
             layers = [784, hidden, 4]
-            activations = ['sigmoid', 'sigmoid']
-            loss = 'mse'
+            activations = ['sigmoid', None]
+            loss = 'bce_logits'
         X_train, y_train, X_val, y_val, X_test, y_test = load_mnist('mnist.pkl.gz', label_mode=label_mode)
         model = MLPModel(layers[0], layers[-1], layers[1:-1], len(layers)-2, activations, loss=loss)
         model.fit(X_train, y_train, X_val, y_val, epochs=epochs, lr=lr, batch_size=batch_size)
@@ -289,114 +340,150 @@ def hyperparam_study(label_mode, configs):
         print(f"HP -> mode={label_mode}, hidden={hidden}, lr={lr}, bs={batch_size} | Val Acc={acc_val:.4f}")
     return results
 
+#为了可复现用的，意义不大
+def set_seed(seed=42):
+    np.random.seed(seed)
+
+
+
+def summarize_results(title, acc_clean, acc_adv, eps):
+    print(f"\n=== {title} ===")
+    print(f"Clean accuracy: {acc_clean:.4f}")
+    print(f"FGSM accuracy (eps={eps}): {acc_adv:.4f}")
+
+
+def plot_loss_curves_both(res_onehot, res_bit4, save_path=None):
+    plt.figure(figsize=(7, 5))
+    plt.plot(range(1, len(res_onehot['train_losses']) + 1), res_onehot['train_losses'], marker='o', label='Train (10-out)')
+    plt.plot(range(1, len(res_onehot['val_losses']) + 1), res_onehot['val_losses'], marker='s', label='Val (10-out)')
+    plt.plot(range(1, len(res_bit4['train_losses']) + 1), res_bit4['train_losses'], marker='^', label='Train (4-bit)')
+    plt.plot(range(1, len(res_bit4['val_losses']) + 1), res_bit4['val_losses'], marker='v', label='Val (4-bit)')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Loss Curves: 10-output vs 4-bit')
+    plt.grid(True)
+    plt.legend()
+    if save_path:
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=150)
+    plt.show()
+
+
+def plot_predictions_grid(model, X, y, mode_title, decode_pred_fn=None, decode_true_fn=None, n=5, save_path=None):
+    idx = np.random.choice(X.shape[0], n, replace=False)
+    Xs = X[idx]
+    if decode_pred_fn is None and decode_true_fn is None:
+        y_true = np.argmax(y[idx], axis=1)
+        y_pred = model.predict(Xs)
+    else:
+        # use provided decoders
+        y_true = decode_true_fn(y[idx])
+        y_pred = decode_pred_fn(model.forward(Xs))
+    fig, axes = plt.subplots(1, n, figsize=(2.2*n, 2.6))
+    for i, ax in enumerate(axes):
+        ax.imshow(Xs[i].reshape(28, 28), cmap='gray')
+        ax.axis('off')
+        ax.set_title(f"T:{int(y_true[i])} P:{int(y_pred[i])}")
+    plt.suptitle(f"{mode_title}: Predictions (T=true, P=pred)")
+    if save_path:
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=150)
+    plt.show()
+
+
+def plot_fgsm_comparison_grid(model, X, Y, eps, mode_title, decode_pred_fn=None, decode_true_fn=None, n=5, save_path=None):
+    # compute clean accuracy
+    if decode_pred_fn is None and decode_true_fn is None:
+        logits_clean = model.forward(X)
+        acc_clean = np.mean(np.argmax(logits_clean, 1) == np.argmax(Y, 1))
+    else:
+        y_pred_clean = decode_pred_fn(model.forward(X))
+        y_true_clean = decode_true_fn(Y)
+        acc_clean = np.mean(y_pred_clean == y_true_clean)
+
+    # attack
+    X_adv = fgsm_attack(model, X, Y, epsilon=eps)
+
+    # compute adv accuracy
+    if decode_pred_fn is None and decode_true_fn is None:
+        logits_adv = model.forward(X_adv)
+        acc_adv = np.mean(np.argmax(logits_adv, 1) == np.argmax(Y, 1))
+    else:
+        y_pred_adv = decode_pred_fn(model.forward(X_adv))
+        acc_adv = np.mean(y_pred_adv == y_true_clean)
+
+    # visualize pairs
+    idx = np.random.choice(X.shape[0], n, replace=False)
+    plt.figure(figsize=(2.2*n, 4.4))
+    for i, j in enumerate(idx):
+        plt.subplot(2, n, i + 1)
+        plt.imshow(X[j].reshape(28, 28), cmap='gray')
+        plt.title('Clean')
+        plt.axis('off')
+        plt.subplot(2, n, i + 1 + n)
+        plt.imshow(X_adv[j].reshape(28, 28), cmap='gray')
+        plt.title('FGSM')
+        plt.axis('off')
+    plt.suptitle(f"{mode_title} FGSM (eps={eps})")
+    if save_path:
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=150)
+    plt.show()
+
+    return acc_clean, acc_adv
 
 if __name__ == '__main__':
-    # ---- Task 2: Compare 10-output vs 4-output ----
-    res_onehot = run_experiment('onehot', epochs=15, lr=0.3, batch_size=32)
-    res_bit4 = run_experiment('bit4', epochs=15, lr=0.3, batch_size=32)
-    print("\n=== One-hot and Bit-4 Comparison ===")
+    set_seed(42)
+
+    # Train both modes with quiet training output
+    res_onehot = run_experiment('onehot', epochs=15, lr=0.3, batch_size=32, seed=42, verbose=0)
+    res_bit4   = run_experiment('bit4',   epochs=15, lr=0.3, batch_size=32, seed=42, verbose=0)
+
+    # Print final test accuracies
+    print("\n=== One-hot and Bit-4: Final Test Accuracy ===")
     print(f"One-hot (10 outputs) Test Acc: {res_onehot['test_acc']:.4f}")
     print(f"Bit-4  (4 outputs)  Test Acc: {res_bit4['test_acc']:.4f}")
 
-    # ---- Show Test Dataset Prediction Results (one-hot model) ----
-    indices = np.random.choice(res_onehot['X_test'].shape[0], 5, replace=False)
-    X_samples = res_onehot['X_test'][indices]
-    y_true = np.argmax(res_onehot['y_test'][indices], axis=1)
-    y_pred = res_onehot['model'].predict(X_samples)
+    # Loss curve comparison (saved)
+    plot_loss_curves_both(res_onehot, res_bit4, save_path='loss_curves_10out_vs_4bit.png')
 
-    fig, axes = plt.subplots(1, 5, figsize=(12, 3))
-    for i, ax in enumerate(axes):
-        ax.imshow(X_samples[i].reshape(28, 28), cmap="gray")
-        ax.axis("off")
-        ax.set_title(f"T:{y_true[i]} P:{y_pred[i]}")
-    plt.suptitle("One-hot model: Test samples (T=true, P=pred)")
-    plt.show()
+    # Prediction grids (saved)
+    plot_predictions_grid(res_onehot['model'], res_onehot['X_test'], res_onehot['y_test'],
+                          mode_title='One-hot model', n=5,
+                          save_path='predictions_onehot.png')
 
-    # ---- FGSM clean vs adversarial (one-hot model) ----
-    print("-" * 20, "Attack Evaluation (one-hot)", "-" * 20)
+    plot_predictions_grid(res_bit4['model'], res_bit4['X_test'], res_bit4['y_test'],
+                          mode_title='Bit-4 model',
+                          decode_pred_fn=bit4_logits_to_int,
+                          decode_true_fn=bit4_bits_to_int,
+                          n=5,
+                          save_path='predictions_bit4.png')
+
+    # FGSM comparisons (saved)
+    eps = 0.2
     n_eval = 1000
-    X_eval = res_onehot['X_test'][:n_eval]
-    Y_eval = res_onehot['y_test'][:n_eval]
 
-    logits_clean = res_onehot['model'].forward(X_eval)
-    acc_clean = np.mean(np.argmax(logits_clean, 1) == np.argmax(Y_eval, 1))
-    print(f"Accuracy on clean {n_eval} samples: {acc_clean:.4f}")
+    X_eval_10 = res_onehot['X_test'][:n_eval]
+    Y_eval_10 = res_onehot['y_test'][:n_eval]
+    acc_clean_10, acc_adv_10 = plot_fgsm_comparison_grid(res_onehot['model'], X_eval_10, Y_eval_10, eps,
+                                                         mode_title='One-hot', n=5,
+                                                         save_path='fgsm_onehot.png')
+    summarize_results('One-hot Attack Evaluation', acc_clean_10, acc_adv_10, eps)
 
-    eps = 0.2  # you can adjust 0.05/0.1/0.2/0.3
-    X_adv = fgsm_attack(res_onehot['model'], X_eval, Y_eval, epsilon=eps)
-    logits_adv = res_onehot['model'].forward(X_adv)
-    acc_adv = np.mean(np.argmax(logits_adv, 1) == np.argmax(Y_eval, 1))
-    print(f"Accuracy under FGSM attack (eps={eps}): {acc_adv:.4f}")
-
-    idx = np.random.choice(n_eval, 5, replace=False)
-    plt.figure(figsize=(10, 4))
-    for i, j in enumerate(idx):
-        plt.subplot(2, 5, i + 1)
-        plt.imshow(X_eval[j].reshape(28, 28), cmap="gray")
-        plt.title("Clean")
-        plt.axis("off")
-        plt.subplot(2, 5, i + 6)
-        plt.imshow(X_adv[j].reshape(28, 28), cmap="gray")
-        plt.title("FGSM")
-        plt.axis("off")
-    plt.suptitle(f"FGSM eps={eps}")
-    plt.show()
-
-    # ---- Show Test Dataset Prediction Results (bit-4 model) ----
-    indices = np.random.choice(res_bit4['X_test'].shape[0], 5, replace=False)
-    X_samples = res_bit4['X_test'][indices]
-    y_true_b4 = from_bit4(res_bit4['y_test'][indices])
-    y_pred_b4 = from_bit4(res_bit4['model'].forward(X_samples))
-
-    fig, axes = plt.subplots(1, 5, figsize=(12, 3))
-    for i, ax in enumerate(axes):
-        ax.imshow(X_samples[i].reshape(28, 28), cmap="gray")
-        ax.axis("off")
-        ax.set_title(f"T:{int(y_true_b4[i])} P:{int(y_pred_b4[i])}")
-    plt.suptitle("Bit-4 model: Test samples (T=true, P=pred)")
-    plt.show()
-
-    # ---- FGSM clean vs adversarial (bit-4 model) ----
-    print("-" * 20, "Attack Evaluation (bit-4)", "-" * 20)
-    n_eval = 1000
     X_eval_b4 = res_bit4['X_test'][:n_eval]
     Y_eval_b4 = res_bit4['y_test'][:n_eval]
+    acc_clean_b4, acc_adv_b4 = plot_fgsm_comparison_grid(
+        res_bit4['model'], X_eval_b4, Y_eval_b4, eps,
+        mode_title='Bit-4',
+        decode_pred_fn=bit4_logits_to_int,
+        decode_true_fn=bit4_bits_to_int,
+        n=5,
+        save_path='fgsm_bit4.png')
+    summarize_results('Bit-4 Attack Evaluation', acc_clean_b4, acc_adv_b4, eps)
 
-    # Accuracy on clean samples
-    y_pred_clean = from_bit4(res_bit4['model'].forward(X_eval_b4))
-    y_true_clean = from_bit4(Y_eval_b4)
-    acc_clean_b4 = np.mean(y_pred_clean == y_true_clean)
-    print(f"Accuracy on clean {n_eval} samples: {acc_clean_b4:.4f}")
-
-    # FGSM attack
-    eps = 0.2
-    X_adv_b4 = fgsm_attack(res_bit4['model'], X_eval_b4, Y_eval_b4, epsilon=eps)
-    y_pred_adv = from_bit4(res_bit4['model'].forward(X_adv_b4))
-    acc_adv_b4 = np.mean(y_pred_adv == y_true_clean)
-    print(f"Accuracy under FGSM attack (eps={eps}): {acc_adv_b4:.4f}")
-
-    # Visualize 5 pairs
-    idx = np.random.choice(n_eval, 5, replace=False)
-    plt.figure(figsize=(10, 4))
-    for i, j in enumerate(idx):
-        plt.subplot(2, 5, i + 1)
-        plt.imshow(X_eval_b4[j].reshape(28, 28), cmap="gray")
-        plt.title("Clean")
-        plt.axis("off")
-        plt.subplot(2, 5, i + 6)
-        plt.imshow(X_adv_b4[j].reshape(28, 28), cmap="gray")
-        plt.title("FGSM")
-        plt.axis("off")
-    plt.suptitle(f"Bit-4 FGSM eps={eps}")
-    plt.show()
-
-    # Plot example loss curves for the second run
-    plt.figure(figsize=(6, 4))
-    plt.plot(range(1, len(res_bit4['train_losses']) + 1), res_bit4['train_losses'], marker='o', label='Train (bit4)')
-    plt.plot(range(1, len(res_bit4['val_losses']) + 1), res_bit4['val_losses'], marker='s', label='Val (bit4)')
-    plt.xlabel('Epoch');
-    plt.ylabel('Loss');
-    plt.title('Loss Curve (bit4)');
-    plt.legend();
-    plt.grid(True);
-    plt.show()
+    print("\nArtifacts saved:")
+    print(" - loss_curves_10out_vs_4bit.png")
+    print(" - predictions_onehot.png")
+    print(" - predictions_bit4.png")
+    print(" - fgsm_onehot.png")
+    print(" - fgsm_bit4.png")
