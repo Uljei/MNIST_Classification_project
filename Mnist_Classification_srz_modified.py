@@ -206,7 +206,56 @@ def fgsm_attack(model, X, y, epsilon=0.1):
     x_adv = np.clip(x_adv, 0.0, 1.0)
     return x_adv
 
+def deepfool_multiclass(model, X, y, max_iter=10, epsilon=0.3):
+    """
+    One-hot encoded DeepFool attack
+    """
+    X_adv = X.copy()
+    
+    for i in range(X.shape[0]):
+        x = X[i:i+1]
+        y_true = y[i:i+1]
+        true_label = np.argmax(y_true)  
+        
+        r = np.zeros_like(x)
+        
+        for iter in range(max_iter):
+            logits = model.forward(x + r)
+            grad_orig = grad_input(model, x + r, y_true)
+            # check if the classification has changed
+            pred_label = np.argmax(logits)
+            if pred_label != true_label:
+                break
+            pert = np.inf
+            w_best = None
+            for k in range(10):
+                if k == true_label:
+                    continue
+                grad_k = grad_input(model, x + r, np.eye(10)[[k]])
+                w_k = grad_k - grad_orig
+                f_k = logits[0, k] - logits[0, true_label]
 
+                pert_k = abs(f_k) / (np.linalg.norm(w_k) + 1e-8)
+
+                if pert_k < pert:
+                    pert = pert_k
+                    w_best = w_k
+
+            # if no valid boundary is found, stop
+            if w_best is None or np.linalg.norm(w_best) < 1e-8:
+                break
+
+            r_i = (pert / (np.linalg.norm(w_best) + 1e-8)) * w_best
+            r += r_i
+
+            if np.linalg.norm(r) > epsilon:
+                r = r / np.linalg.norm(r) * epsilon
+                break
+
+        X_adv[i] = x - r
+    
+    X_adv = np.clip(X_adv, 0.0, 1.0)
+    return X_adv
 
 if __name__ == '__main__':
     X_train, y_train, X_val, y_val, X_test, y_test = load_mnist('mnist.pkl.gz')
@@ -219,8 +268,10 @@ if __name__ == '__main__':
 
     test_acc = model.evaluate(X_test, y_test)
     print("Final Test Accuracy:", test_acc)
-
-
+    # 保存模型
+    with open('trained_mnist_model.pkl', 'wb') as f:
+        pickle.dump(model, f)
+    print("Model have been saved: trained_mnist_model.pkl")
     # Plot Trining/Validation Loss Curve
     plt.figure(figsize=(6,4))
     plt.plot(range(1, len(model.train_losses)+1), model.train_losses, marker='o', label="Train Loss")
@@ -248,8 +299,11 @@ if __name__ == '__main__':
 
     # Implement an attack on the trained neural network
     print("-" * 20, "Attack Evaluation", "-" * 20)
+    with open('trained_mnist_model.pkl', 'rb') as f:
+        model = pickle.load(f)
 
-    # Evaluation set: select first 1000 samples from the test set
+
+    # # Evaluation set: select first 1000 samples from the test set
     n_eval = 1000 #如果1000个样本不够重复训练的话就在这里调整
     X_eval = X_test[:n_eval]
     Y_eval = y_test[:n_eval]
@@ -282,4 +336,62 @@ if __name__ == '__main__':
         plt.axis("off")
     plt.suptitle(f"FGSM eps={eps}")
     plt.show()
-    # 后面再使用对抗样本X_adv和原有标签Y_eval再训练就可以
+    
+
+    ## train with attack data
+    loaded_model = MLPModel(layers[0], layers[-1], layers[1:-1], len(layers)-2, activations, loss="mse")
+    #train with attack data
+    # mixed training
+    X_mixed = np.vstack([X_train, X_adv])
+    y_mixed = np.vstack([y_train, Y_eval])
+
+    # shuffle data
+    indices = np.random.permutation(X_mixed.shape[0])
+    X_mixed = X_mixed[indices]
+    y_mixed = y_mixed[indices]
+
+    loaded_model.fit(X_mixed, y_mixed, X_val, y_val, epochs=30, lr=0.5, batch_size=10)
+    test_acc = loaded_model.evaluate(X_test, y_test)
+    print("Attack Model Final Test Accuracy:", test_acc)# Generate adversarial examples using FGSM
+    with open('trained_mnist_attack_model.pkl', 'wb') as f:
+        pickle.dump(loaded_model, f)
+    print("Model have been saved: trained_mnist_model.pkl")
+    # Plot Trining/Validation Loss Curve
+    plt.figure(figsize=(6,4))
+    plt.plot(range(1, len(loaded_model.train_losses)+1), loaded_model.train_losses, marker='o', label="Train Loss")
+    plt.plot(range(1, len(loaded_model.val_losses)+1), loaded_model.val_losses, marker='s', label="Val Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title(f"{loaded_model.loss.upper()} Loss Curve")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    ## New Attack
+    with open('trained_mnist_attack_model.pkl', 'rb') as f:
+        loaded_model = pickle.load(f)
+    eps = 0.5 
+    X_adv = deepfool_multiclass(loaded_model, X_eval, Y_eval, epsilon=eps)
+    # Adversarial examples (with attack) accuracy
+    logits_adv = loaded_model.forward(X_adv)
+    # Plot
+    # Randomly select 5 pairs of clean vs. adversarial images for comparison
+    idx = np.random.choice(n_eval, 5, replace=False)
+    plt.figure(figsize=(10, 4))
+    for i, j in enumerate(idx):
+        plt.subplot(2, 5, i + 1)
+        plt.imshow(X_eval[j].reshape(28, 28), cmap="gray")
+        plt.title("Clean")
+        plt.axis("off")
+        plt.subplot(2, 5, i + 6)
+        plt.imshow(X_adv[j].reshape(28, 28), cmap="gray")
+        plt.title("Deepfool")
+        plt.axis("off")
+    plt.suptitle(f"Deepfool eps={eps}")
+    plt.show()
+    ## Evaluate
+    acc_adv = np.mean(np.argmax(logits_adv, 1) == np.argmax(Y_eval, 1))
+    print(f"Accuracy under Deepfool attack (eps={eps}): {acc_adv:.4f}")
+    logits_clean = loaded_model.forward(X_eval)
+    acc = np.mean(np.argmax(logits_clean, 1) == np.argmax(Y_eval, 1))
+    print(f"Original Model Accuracy under Deepfool attack (eps={eps}): {acc:.4f}")
