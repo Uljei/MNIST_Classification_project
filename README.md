@@ -1,15 +1,28 @@
-png图是我现在的输出结果
+Architecture:
 
-Mnist_Classification_srz_modified.py 是今天下午我修改之前的版本
+MINIST_Classidication_project
+|___ __init__.py
+|___ model.py # backbone that fllows the project requirements
+|___ Functions.py # store all the functions
+|___ Visualization.py # for plots
+|___ HyperparamStudy.py # run indivisually to achieve hyperparameter study
+|___ tests/
+     |___  __init__.py
+     |___ test_activations_and_losses.py
+     |___ test_attack.py
+     |___ test_intergration.py
+     |___ test_layers.py
+     |___ test_model.py
+     |___ test_visualization.py
 
-Mnist_Classification.py 是我增加了bit4的版本，目前正在修改输出格式（现在被我搞得太乱了...）
+One can implement the project by following the steps below.
+<1> Run Functions.py and Visualization.py first for initiualizatoin
+<2> Run model.py gives all the results as required in the project. 
+    You can adjust the model parameters, inclusing the activation fuctions, loss, layers, and number of nerouns, as needed.
+<3> Run HyperparamStudy.py for detailed hyperparameter study.
+<4> Test with the command 
+    '''
+    bash
+    PYTHONPATH=. pytest tests/ -v
+    '''
 
-完成4output的更新，目前结果有：
-
-•loss_curves_10out_vs_4bit.png
-
-•predictions_onehot.png / predictions_bit4.png
-
-•fgsm_onehot.png / fgsm_bit4.png
-
-超参的周五继续写，目前只有一个初稿
