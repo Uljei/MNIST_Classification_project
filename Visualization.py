@@ -21,19 +21,29 @@ def plot_loss_curves_both(res_onehot, res_bit4, save_path=None):
         plt.tight_layout()
         plt.savefig(save_path, dpi=150)
     plt.show()
-def plot_loss_curve(loaded_model, save_path=None):
+
+def plot_loss_curve(res_or_model, save_path=None, title_prefix=""):
+    # support both dict and model input
+    if isinstance(res_or_model, dict):
+        train_losses = res_or_model['train_losses']
+        val_losses = res_or_model['val_losses']
+    else:
+        train_losses = res_or_model.train_losses
+        val_losses = res_or_model.val_losses
+
     plt.figure(figsize=(6,4))
-    plt.plot(range(1, len(loaded_model.train_losses)+1), loaded_model.train_losses, marker='o', label="Train Loss")
-    plt.plot(range(1, len(loaded_model.val_losses)+1), loaded_model.val_losses, marker='s', label="Val Loss")
+    plt.plot(range(1, len(train_losses)+1), train_losses, marker='o', label="Train Loss")
+    plt.plot(range(1, len(val_losses)+1), val_losses, marker='s', label="Val Loss")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.title(f"{loaded_model.loss.upper()} Loss Curve")
+    plt.title(f"{title_prefix}  Loss Curve")
     plt.legend()
     plt.grid(True)
     if save_path:
         plt.tight_layout()
         plt.savefig(save_path, dpi=150)
     plt.show()
+
 
 def plot_predictions_grid(model, X, y, mode_title, decode_pred_fn=None, decode_true_fn=None, n=5, save_path=None):
     idx = np.random.choice(X.shape[0], n, replace=False)
