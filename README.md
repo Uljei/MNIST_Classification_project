@@ -15,8 +15,8 @@ MINIST_Classidication_project
      |___ test_model.py
      |___ test_visualization.py
 
-One can implement the project by following the steps below.
-<1> Run Functions.py and Visualization.py first for initiualizatoin
+One can implement the project by following the steps:
+<1> Run Functions.py and Visualization.py first for initializatoin
 <2> Run model.py gives all the results as required in the project. 
     You can adjust the model parameters, inclusing the activation fuctions, loss, layers, and number of nerouns, as needed.
 <3> Run HyperparamStudy.py for detailed hyperparameter study.
