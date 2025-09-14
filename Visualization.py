@@ -105,7 +105,7 @@ def plot_df_grid(model, X, Y, eps, n=5, save_path=None):
     acc_clean = np.mean(np.argmax(logits_clean, 1) == np.argmax(Y, 1))
 
     # generate adversarial examples
-    X_adv = deepfool_multiclass(model, X, Y, epsilon=eps)
+    X_adv = deepfool_multiclass(model, X, Y, epsilon=eps, max_iter=50)
 
     # compute adv accuracy
     logits_adv = model.forward(X_adv)

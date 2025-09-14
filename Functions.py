@@ -155,9 +155,9 @@ def deepfool_multiclass(model, X, y, max_iter=10, epsilon=0.3):
                     continue
                 grad_k = grad_input(model, x + r, np.eye(num_classes)[[k]])
                 w_k = grad_k - grad_orig
-                f_k = logits[0, k] - logits[0, true_label]
+                f_k = logits[0, true_label] - logits[0, k]
 
-                pert_k = abs(f_k) / (np.linalg.norm(w_k) + 1e-8)
+                pert_k = f_k / (np.linalg.norm(w_k) + 1e-8)
 
                 if pert_k < pert:
                     pert = pert_k

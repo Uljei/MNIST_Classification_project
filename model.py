@@ -220,8 +220,8 @@ if __name__ == '__main__':
                           save_path='predictions_bit4.png')
 
     # FGSM comparisons
-    eps = 0.2
-    n_eval = 1000
+    eps = 0.3
+    n_eval = 3000
 
     X_eval_10 = res_onehot['X_test'][:n_eval]
     Y_eval_10 = res_onehot['y_test'][:n_eval]
@@ -252,7 +252,7 @@ if __name__ == '__main__':
     X_mixed = X_mixed[indices]
     y_mixed = y_mixed[indices]
 
-    loaded_model.fit(X_mixed, y_mixed, res_onehot['X_val'], res_onehot['y_val'], epochs=30, lr=0.5, batch_size=10)
+    loaded_model.fit(X_mixed, y_mixed, res_onehot['X_val'], res_onehot['y_val'], epochs=30, lr=0.2, batch_size=10)
     test_acc = loaded_model.evaluate(res_onehot['X_test'], res_onehot['y_test'])
     
     print("\n=== Retrained Model with FGSM Adversarial Examples ===")
@@ -267,7 +267,11 @@ if __name__ == '__main__':
     ## New Attack with DeepFool
     with open('trained_mnist_attack_model.pkl', 'rb') as f:
         loaded_model = pickle.load(f)
-    eps_df = 0.5 
+    eps_df = 10
+    acc_clean_orig, acc_adv_orig = plot_df_grid(res_onehot['model'], X_eval_10, Y_eval_10, eps_df, n=5,
+                                             save_path='df_original.png')
+    summarize_results('Original Model DeepFool Attack', acc_clean_orig, acc_adv_orig, eps_df)
+
     acc_clean_df, acc_adv_df = plot_df_grid(loaded_model, X_eval_10, Y_eval_10, eps_df, n=5,
                                                          save_path='df_onehot.png')
     summarize_results('DeepFool Attack Evaluation', acc_clean_df, acc_adv_df, eps_df)
