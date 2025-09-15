@@ -32,6 +32,6 @@ Zhe Zhang:
 Jiazhuang Chen:
 Ruizhen Shen:
 Jiuen Feng:
-Jia Gu: Organized .py files into modules; tested the code and fixed any bugs found。
+Jia Gu: Organized .py files into modules; tested the code and fixed any bugs found.
 
 
