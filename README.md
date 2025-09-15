@@ -18,10 +18,10 @@ How to use?
 We provide a notbook file model_demo.ipynb for a clear presentation.
 One can also implement the project by following the steps:
 <1> Run Functions.py and Visualization.py first for initializatoin
-<2> Run model.py gives all the results as required in the project. 
+<2> Run model.py gives all the results as required in the project.
     You can adjust the model parameters, including the activation functions, loss, layers, and number of nerouns, as needed.
 <3> Run HyperparamStudy.py for detailed hyperparameter study.
-<4> Test with the command 
+<4> Test with the command
     '''
     bash
     cd YOUR/PATH/TO/MINIST_Classidication_project
@@ -31,7 +31,5 @@ Group contributions:
 Zhe Zhang:
 Jiazhuang Chen:
 Ruizhen Shen: Implemented the FGSM attack function and applied it to the trained model.
-Jiuen Feng:
+Jiuen Feng: Train again with additional FGSM attack data. Implemented the DeepFool attack.
 Jia Gu: Organized .py files into modules; tested the code and fixed any bugs found.
-
-
