@@ -135,9 +135,6 @@ class MLPModel():
         #     raise ValueError("y must be one-hot (10) or 4-bit encoded (4)")
         return np.mean(y_pred == y_true)
 
-# Backward-compat alias
-# from_bit4 = bit4_logits_to_int
-
 # Loading Data
 def load_mnist(path='mnist.pkl.gz', label_mode='onehot'):
     with gzip.open(path, 'rb') as f:
