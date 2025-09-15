@@ -30,7 +30,7 @@ One can also implement the project by following the steps:
 Group contributions:
 Zhe Zhang:
 Jiazhuang Chen:
-Ruizhen Shen:
+Ruizhen Shen: Implemented the FGSM attack function and applied it to the trained model.
 Jiuen Feng:
 Jia Gu: Organized .py files into modules; tested the code and fixed any bugs found.
 
