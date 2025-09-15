@@ -29,7 +29,7 @@ One can also implement the project by following the steps:
     '''
 Group contributions:
 Zhe Zhang:
-Jiazhuang Chen:
+Jiazhuang Chen: Implemented the 4 outputs mode and hyperparam study parts.
 Ruizhen Shen: Implemented the FGSM attack function and applied it to the trained model.
 Jiuen Feng: Train again with additional FGSM attack data. Implemented the DeepFool attack function.
 Jia Gu: Organized .py files into modules; tested the code and fixed any bugs found.
