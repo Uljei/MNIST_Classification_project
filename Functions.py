@@ -37,13 +37,12 @@ def cross_entropy(y, y_hat):
 def cross_entropy_derivative(y, y_hat):
     return (y_hat - y) / y.shape[0]
 
-# 4输出用了二元交叉熵
+# functions for 4 output BCE with logits
 def bce_logits(y, logits):
     z = logits
     # numerically stable BCE with logits
     return np.mean(np.maximum(z, 0) - z * y + np.log1p(np.exp(-np.abs(z))))
 
-# functions for 4 output BCE with logits
 def bce_logits_derivative(y, logits):
     # dL/dz = sigmoid(z) - y
     return sigmoid(logits) - y
