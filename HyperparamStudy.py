@@ -29,12 +29,12 @@ def hyperparam_study(
     all_results = []
     best_pack = None
 
-    # 统一载数据（每个 cfg 可单独设 seed 则重复载入也 OK）
+    # Harmonized data loading (each cfg can have a separate seed, so reloading is OK)
     def _load(label_mode):
         return load_mnist('mnist.pkl.gz', label_mode=label_mode)
 
     for cfg in configs:
-        # 解析配置
+        # Parse Configuration
         _seed      = cfg.get('seed', seed)
         rng.seed(_seed)
         np.random.seed(_seed)
@@ -49,21 +49,21 @@ def hyperparam_study(
         else:
             hidden_sizes = list(hidden)
 
-        # 设定激活（允许覆盖）
+        # Setting activation (allow override)
         acts = cfg.get('activations', None)
         if acts is None:
             if label_mode == 'onehot':
-                # 隐藏层全部用 sigmoid，输出 softmax
+                # Hidden layers are all sigmoid, output softmax
                 acts = ['sigmoid'] * len(hidden_sizes) + ['softmax']
                 loss = 'cross_entropy'
                 out_size = 10
             else:
-                # 隐藏层 sigmoid，输出 logits（None）+ BCE-with-logits
+                #Hidden layer sigmoid, output logits(None）+ BCE-with-logits
                 acts = ['sigmoid'] * len(hidden_sizes) + [None]
                 loss = 'bce_logits'
                 out_size = 4
         else:
-            # 用户自定义激活，推断输出大小 & loss
+            # User-defined activation, inferred output size & loss
             acts = list(acts)
             if label_mode == 'onehot':
                 out_size = 10
@@ -73,16 +73,16 @@ def hyperparam_study(
                 loss = 'bce_logits' if acts[-1] is None else cfg.get('loss', 'bce_logits')
 
             if len(acts) != len(hidden_sizes) + 1:
-                raise ValueError("activations 长度需等于 隐藏层数 + 1（包含输出层激活）。")
+                raise ValueError("Activation length should be equal to the number of hidden layers + 1 (including output layer activation). ")
 
-        # 构图
+        
         layers = [784] + hidden_sizes + [out_size]
-        num_layers = len(layers) - 2  # 隐藏层数
+        num_layers = len(layers) - 2  # num of hidden layers
 
-        # 加载数据
+        # load data
         X_train, y_train, X_val, y_val, X_test, y_test = _load(label_mode)
 
-        # 初始化模型
+        # Initialization Model
         model = MLPModel(
             input_size=layers[0],
             output_size=layers[-1],
@@ -92,7 +92,7 @@ def hyperparam_study(
             loss=loss
         )
 
-        # ----- 训练循环（带早停） -----
+        # -----  Training cycle (with early stop)
         best_val_acc  = -np.inf
         best_val_loss = np.inf
         best_epoch    = -1
@@ -101,11 +101,11 @@ def hyperparam_study(
         train_losses, val_losses = [], []
 
         for epoch in range(epochs):
-            # 打乱
+            # random 
             idx = rng.permutation(X_train.shape[0])
             X_shuf, y_shuf = X_train[idx], y_train[idx]
 
-            # 小批量 SGD
+            #  SGD
             for i in range(0, X_shuf.shape[0], batch_size):
                 Xb = X_shuf[i:i+batch_size]
                 yb = y_shuf[i:i+batch_size]
@@ -113,7 +113,7 @@ def hyperparam_study(
                 model.backward(yb, y_hat)
                 model.update(lr)
 
-            # 计算当轮的 train/val loss
+            # calculate train/val loss of this round
             y_hat_tr  = model.forward(X_train)
             y_hat_val = model.forward(X_val)
 
@@ -128,10 +128,10 @@ def hyperparam_study(
 
             train_losses.append(trL);  val_losses.append(vaL)
 
-            # 计算当轮的 val_acc
+            # val_acc
             val_acc = model.evaluate(X_val, y_val)
 
-            # 依据指标判定是否更新“最优”
+            # Indicator-based determination of whether updating is "optimal"
             improved = False
             if eval_metric == 'val_acc':
                 if val_acc > best_val_acc:
@@ -142,12 +142,12 @@ def hyperparam_study(
                     best_val_loss, best_val_acc = vaL, val_acc
                     best_epoch, improved = epoch, True
             else:
-                raise ValueError("eval_metric 仅支持 'val_acc' 或 'val_loss'")
+                raise ValueError("eval_metric only support 'val_acc' or 'val_loss'")
 
-            # 早停计数
+            # early stop counting 
             if improved:
                 no_imp = 0
-                # 可选：如需“真正回滚”参数，可在此深拷贝 model（当前实现记录指标即可）
+                # Optional: if you want a "true rollback" parameter, you can make a deep copy of the model here (the current realization of the logging metrics is sufficient)
                 best_snapshot = {
                     'epoch': epoch,
                     'val_acc': val_acc,
@@ -159,10 +159,10 @@ def hyperparam_study(
                     # print(f"[EarlyStop] epoch={epoch+1} no_improve={no_imp}")
                     break
 
-        # 选一个统一的“测试集表现”做记录（注意：未回滚参数，则是最后一轮的）
+        # Select a uniform "test set performance" to record (note: without rolling back parameters, it's the last round)
         test_acc = model.evaluate(X_test, y_test)
 
-        # 可选：验证集 FGSM 稳健性评估
+        # Optional: validation set FGSM robustness assessment
         fgsm_records = []
         if fgsm_eval:
             n_eval = min(n_eval_fgsm, X_val.shape[0])
@@ -204,7 +204,7 @@ def hyperparam_study(
         pack = {'result': result, 'model': model}
         all_results.append(result)
 
-        # 维护全局最优
+        # Maintaining Global Optimality
         better = False
         if best_pack is None:
             better = True
@@ -216,7 +216,7 @@ def hyperparam_study(
         if better:
             best_pack = pack
 
-    # 排序输出
+    # Sorted Output
     if eval_metric == 'val_acc':
         all_results.sort(key=lambda d: d['best_val_acc'], reverse=True)
     else:
@@ -233,7 +233,7 @@ def hyperparam_study(
 if __name__ == "__main__":
     
     cfgs = [
-        # 10 类 one-hot：softmax + CE
+        # 10 outputs one-hot：softmax + CE
         {'hidden': 30, 'epochs': 30, 'lr': 0.3, 'batch_size': 32},
         {'hidden': [128, 64], 'epochs': 30, 'lr': 0.2, 'batch_size': 64, 'activations': ['ReLU', 'ReLU', 'softmax']},
         {'hidden': [64, 64, 32], 'epochs': 40, 'lr': 0.15, 'batch_size': 64,
