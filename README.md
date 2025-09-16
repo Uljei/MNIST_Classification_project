@@ -28,7 +28,7 @@ One can also implement the project by the following steps:
     PYTHONPATH=. pytest tests/ -v
     '''
 Group contributions:
-Zhe Zhang: Implemented the core MLP model (forward/backward propagation, SGD training, loss tracking, and visualization).
+Zhe Zhang: Implemented the core MLP model (forward/backward propagation, SGD training, loss tracking, and some visualizations).
 Jiazhuang Chen: Implemented the 4 outputs mode and hyperparam study parts.
 Ruizhen Shen: Implemented the FGSM attack function and applied it to the trained model.
 Jiuen Feng: Train again with additional FGSM attack data. Implemented the DeepFool attack function.
