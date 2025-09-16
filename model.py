@@ -160,7 +160,7 @@ def run_experiment(
         layers = [784, 30, 10],
         activations = ['sigmoid', 'softmax'],
         loss = 'mse',
-        epochs=15, lr=0.3, batch_size=32, seed=42, verbose=1
+        epochs=15, lr=0.5, batch_size=32, seed=42, verbose=1
         ):
     # Ensure reproducibility
     np.random.seed(seed)
