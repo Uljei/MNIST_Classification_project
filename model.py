@@ -264,7 +264,7 @@ if __name__ == '__main__':
     ## New Attack with DeepFool
     with open('trained_mnist_attack_model.pkl', 'rb') as f:
         loaded_model = pickle.load(f)
-    eps_df = 10
+    eps_df = 5
     acc_clean_orig, acc_adv_orig = plot_df_grid(res_onehot['model'], X_eval_10, Y_eval_10, eps_df, n=5,
                                              save_path='df_original.png')
     summarize_results('Original Model DeepFool Attack', acc_clean_orig, acc_adv_orig, eps_df)
