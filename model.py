@@ -158,7 +158,7 @@ def load_mnist(path='mnist.pkl.gz', label_mode='onehot'):
 def run_experiment(
         label_mode='onehot', 
         layers = [784, 30, 10],
-        activations = ['sigmoid', 'softmax'],
+        activations = ['sigmoid', 'sigmoid'],
         loss = 'mse',
         epochs=15, lr=0.5, batch_size=32, seed=42, verbose=1
         ):
