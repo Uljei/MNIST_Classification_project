@@ -7,23 +7,23 @@ def hyperparam_study(
     seed=42,
     early_stopping=True,
     patience=5,
-    eval_metric='val_acc',      # 也可用 'val_loss' 作为选择标准
-    return_best_model=False,    # True 时返回 { 'best_model': model, ... }
-    fgsm_eval=False,            # True 时在验证集上做一次 FGSM 稳健性评估
-    fgsm_eps_list=(0.2,),       # 可传多个 eps
-    n_eval_fgsm=1000            # FGSM 评估子集大小
+    eval_metric='val_acc',      # You can also use 'val_loss' as a selection criterion.
+    return_best_model=False,    # if True return { 'best_model': model, ... }
+    fgsm_eval=False,            # Do an FGSM robustness evaluation on the validation set when True
+    fgsm_eps_list=(0.2,),       # more eps supported 
+    n_eval_fgsm=1000            
 ):
     """
-    网格搜索 / 批量实验器：
-      - 支持 hidden 为 int 或 list（多隐藏层）
-      - 支持 activations 为 list，长度 = 隐藏层数 + 1（最后一层激活）
-        * 若未提供 activations，则按 label_mode 使用默认：
-          onehot:   ['sigmoid', 'softmax']
-          bit4:     ['sigmoid', None]  (BCE-with-logits)
-      - 早停：基于 eval_metric（val_acc 或 val_loss），patience 达到则停止
-      - 可选：在验证集做 FGSM 稳健性评估（记录 clean 与 adv accuracy）
-    返回：按 eval_metric 最优优先排序的结果列表（每个元素是 dict）
-          若 return_best_model=True，会额外带上 'best_model'
+    Grid search / batch experimenter:
+      - Support hidden as int or list (multiple hidden layers)
+      - support activations as list, length = number of hidden layers + 1 (last layer activated)
+        * If activations are not provided, use default as per label_mode:
+          onehot: ['sigmoid', 'softmax']
+          bit4: ['sigmoid', None] (BCE-with-logits)
+      - Early stop: based on eval_metric (val_acc or val_loss), stop when PATIENCE is reached
+      - Optional: do FGSM robustness evaluation on validation set (log clean vs adv accuracy)
+    return: list of results prioritized by eval_metric (each element is a dict)
+          If return_best_model=True, with 'best_model' in addition
     """
     rng = np.random.RandomState(seed)
     all_results = []
