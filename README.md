@@ -1,5 +1,5 @@
 Architecture:
-MINIST_Classidication_project
+MINIST_Classification_project
 |___ __init__.py
 |___ model_demo.ipynb # jupyter notebook for presentation
 |___ model.py # backbone that follows the project requirements
@@ -15,9 +15,9 @@ MINIST_Classidication_project
      |___ test_model.py
      |___ test_visualization.py
 How to use?
-We provide a notbook file model_demo.ipynb for a clear presentation.
-One can also implement the project by following the steps:
-<1> Run Functions.py and Visualization.py first for initializatoin
+We provide a notebook file model_demo.ipynb for a clear presentation.
+One can also implement the project by the following steps:
+<1> Run Functions.py and Visualization.py first for initialization
 <2> Run model.py gives all the results as required in the project.
     You can adjust the model parameters, including the activation functions, loss, layers, and number of nerouns, as needed.
 <3> Run HyperparamStudy.py for detailed hyperparameter study.
@@ -28,7 +28,7 @@ One can also implement the project by following the steps:
     PYTHONPATH=. pytest tests/ -v
     '''
 Group contributions:
-Zhe Zhang:
+Zhe Zhang: Implemented the core MLP model (forward/backward propagation, SGD training, loss tracking, and visualization).
 Jiazhuang Chen: Implemented the 4 outputs mode and hyperparam study parts.
 Ruizhen Shen: Implemented the FGSM attack function and applied it to the trained model.
 Jiuen Feng: Train again with additional FGSM attack data. Implemented the DeepFool attack function.
